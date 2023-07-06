@@ -285,6 +285,7 @@ class FastMRIDataset(H5SliceData):
         initial_images_key: Optional[str] = None,
         noise_data: Optional[Dict] = None,
         pass_h5s: Optional[Dict] = None,
+        filter_coil_num: Optional[int] = None,
         **kwargs,
     ) -> None:
         # TODO: Clean up Dataset class such that only **kwargs need to get parsed.
@@ -305,6 +306,7 @@ class FastMRIDataset(H5SliceData):
             text_description=kwargs.get("text_description", None),
             pass_h5s=pass_h5s,
             pass_dictionaries=kwargs.get("pass_dictionaries", None),
+            filter_coil_num=filter_coil_num
         )
         if self.sensitivity_maps is not None:
             raise NotImplementedError(

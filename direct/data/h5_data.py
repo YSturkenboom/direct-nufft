@@ -36,6 +36,7 @@ class H5SliceData(Dataset):
         pass_dictionaries: Optional[Dict[str, Dict]] = None,
         pass_h5s: Optional[Dict[str, List]] = None,
         slice_data: Optional[slice] = None,
+        filter_coil_num: Optional[int] = None,
     ) -> None:
         """Initialize the dataset.
 
@@ -94,6 +95,8 @@ class H5SliceData(Dataset):
         self.data: List[Tuple] = []
 
         self.volume_indices: Dict[pathlib.Path, range] = {}
+        
+        self.filter_coil_num = filter_coil_num
 
         # If filenames_filter and filenames_lists are given, it will load files in filenames_filter
         # and filenames_lists will be ignored.
@@ -159,6 +162,13 @@ class H5SliceData(Dataset):
                 self.logger.warning("%s failed with OSError: %s. Skipping...", filename, exc)
                 continue
 
+            if self.filter_coil_num:
+                num_coils = kspace_shape[1]
+                if num_coils != self.filter_coil_num:
+                    self.logger.warning("%s with %s coils does not satisfy coil number filter: %s. Skipping...", filename, num_coils, self.filter_coil_num)
+                    continue
+
+                
             num_slices = kspace_shape[0]
             if not filter_slice:
                 self.data += [(filename, _) for _ in range(num_slices)]
