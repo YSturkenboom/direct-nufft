@@ -135,6 +135,7 @@ def setup_logging(
         filename=log_file,
         log_level=("INFO" if not debug else "DEBUG"),
     )
+    logger.info("=== NUFFT DIRECT ===")
     logger.info("Machine rank: %s", machine_rank)
     logger.info("Local rank: %s", communication.get_local_rank())
     logger.info("Logging: %s", log_file)
