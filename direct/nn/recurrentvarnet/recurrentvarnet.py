@@ -13,6 +13,10 @@ from direct.data.transforms import complex_multiplication, conjugate, expand_ope
 from direct.nn.recurrent.recurrent import Conv2dGRU, NormConv2dGRU
 from direct.nn.types import InitType
 
+from direct.nn.adaptive_policy import StraightThroughPolicy
+
+import matplotlib.pyplot as plt
+
 
 class RecurrentInit(nn.Module):
     """Recurrent State Initializer (RSI) module of Recurrent Variational Network as presented in [1]_.
@@ -118,9 +122,12 @@ class RecurrentVarNet(nn.Module):
         forward_operator: Callable,
         backward_operator: Callable,
         in_channels: int = COMPLEX_SIZE,
-        num_steps: int = 15,
+        num_steps: int = 3,
+        input_dim: tuple = (1,12,218,180,2),
+        budget: int = 12,
+        num_actions: int = 180,
         recurrent_hidden_channels: int = 64,
-        recurrent_num_layers: int = 4,
+        recurrent_num_layers: int = 5,
         no_parameter_sharing: bool = True,
         learned_initializer: bool = False,
         initializer_initialization: Optional[InitType] = None,
@@ -199,6 +206,7 @@ class RecurrentVarNet(nn.Module):
                 multiscale_depth=initializer_multiscale,
             )
         self.num_steps = num_steps
+        self.budget = budget
         self.no_parameter_sharing = no_parameter_sharing
         self.block_list = nn.ModuleList()
         for _ in range(self.num_steps if self.no_parameter_sharing else 1):
@@ -214,8 +222,22 @@ class RecurrentVarNet(nn.Module):
             )
         self.forward_operator = forward_operator
         self.backward_operator = backward_operator
+        self.input_dim = input_dim
+        self.num_actions = num_actions
         self._coil_dim = 1
         self._spatial_dims = (2, 3)
+        
+        self.policies = nn.ModuleList([
+            StraightThroughPolicy(
+                budget=self.budget,
+                coil_dim=self._coil_dim,
+                sampling_type='cartesian',
+                input_dim=self.input_dim,
+                num_actions=self.num_actions
+            ).cuda()
+        ] * self.num_steps)
+        
+        print(self.policies)
 
     def compute_sense_init(self, kspace: torch.Tensor, sensitivity_map: torch.Tensor) -> torch.Tensor:
         r"""Computes sense initialization :math:`x_{\text{SENSE}}`:
@@ -247,6 +269,7 @@ class RecurrentVarNet(nn.Module):
 
     def forward(
         self,
+        kspace: torch.Tensor,
         masked_kspace: torch.Tensor,
         sampling_mask: torch.Tensor,
         sensitivity_map: torch.Tensor,
@@ -292,11 +315,40 @@ class RecurrentVarNet(nn.Module):
                 .sum(self._coil_dim)
                 .permute(0, 3, 1, 2)
             )
+            
+            
+        print('kspace shape', kspace.shape, 'mask shape SHOULD BE BATCHED', sampling_mask.shape)
 
         kspace_prediction = masked_kspace.clone()
 
         for step in range(self.num_steps):
+            print('step', kspace.shape)
+            
             block = self.block_list[step] if self.no_parameter_sharing else self.block_list[0]
+
+            # If policy is enabled for this cell idx, use adaptive sampling policy
+            # TODO implement policies every n cells
+            # if step < 2:
+                
+#                 print('first sample mask BEFORE')
+#                 fig, axs=plt.subplots(1,1)
+#                 axs.imshow(sampling_mask.squeeze().detach().cpu())
+
+            print('Beginning of recurrent step, has gradient', kspace.requires_grad)
+                
+            sampling_mask, masked_kspace, _ = self.policies[step].do_acquisition(
+                kspace,
+                kspace_prediction,
+                sampling_mask,
+                sensitivity_map,
+            )
+
+#                 print('first sample mask AFTER')                
+#                 fig, axs=plt.subplots(1,1)
+#                 axs.imshow(sampling_mask.squeeze().detach().cpu())
+                
+#                 print(sampling_mask.squeeze().detach().cpu())
+            
             kspace_prediction, previous_state = block(
                 kspace_prediction,
                 masked_kspace,
